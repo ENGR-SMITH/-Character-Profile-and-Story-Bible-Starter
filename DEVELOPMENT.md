@@ -369,8 +369,8 @@ The last two rows of group G are **not** stored as character fields. *Continuity
 | 4.2 | Relationship detail | P0 | Type, nature, tension, secret, status (open / resolved / broken), and the POV difference (*"she thinks they are friends; he is using her"*) |
 | 4.3 | Relationship map — text | P0 | Generated, grouped by type, for export into the bible |
 | 4.4 | Relationship map — visual | P1 | Lightweight SVG graph: characters as nodes, typed edges, colour by tag, drag to arrange. No physics simulation required in v1 |
-| 4.5 | Unlinked-character warning | P0 | A character with zero relationships is flagged — in a bible, an isolated character is nearly always an oversight |
-| 4.6 | Reciprocity check | P1 | *"Mara lists Elias as family; Elias does not list Mara."* Surfaces one-sided relationships, which are often intentional and often a mistake |
+| 4.5 | Unlinked-character warning | P0 | A character with no relationships is flagged **when the cast has two or more characters**. With a cast of one there is nobody to be linked to, and `clean-minimal` (§11.2) expects zero findings — so the rule cannot fire on a single character. |
+| 4.6 | Asymmetry check | P1 | Surfaces a relationship the two sides feel differently. Because a relationship is a single bidirectional row (§5.4.1), this is the `asymmetryNote` field from §6.3 — the POV difference described in §4.2 — **not** a missing reverse entry, which that model cannot express. Reported as an open question for the writer rather than as an error, since an uneven relationship is usually deliberate. |
 
 ### 5.5 World & locations
 
@@ -479,6 +479,7 @@ The single most strategically important output, because it is the thing that mak
 | Relationship graph | **Inline SVG**, `d3-force` optional | Small datasets; no need for a canvas engine |
 | AI assist | A **server route** proxying a configurable provider | Matches the Story Oracle model — never call a provider from the browser with a key |
 | Analytics | **Mixpanel**, with the plan's event names | Nexet already standardises on Mixpanel |
+| Testing | **Vitest**, with **jsdom** for the store tests only | Handles TypeScript and the `@/*` alias with no extra config. jsdom is opted into per file, because creating a DOM environment costs more than the tests themselves |
 | Hosting | **Vercel** | Matches Next.js; free tier is ample for a marketing tool |
 
 > **Decision to confirm before build:** whether this tool ships as its own Next.js app (recommended, given this repo) or as a route inside the existing Nexet frontend. The JSON export contract in §6.3 is designed to make that choice reversible.
@@ -844,6 +845,15 @@ author_editor_role_cta_clicked
 - **`broken-messy`** — duplicate names, an orphan character, a misspelled glossary term, an impossible age, a one-sided relationship, a missing core fear. Expect one finding per planted issue, no more.
 - **`deep-full`** — a fully populated fantasy project. Expect a clean export in all six formats.
 - **`legacy-v0`** — an export from an earlier `schemaVersion`, to prove forward compatibility.
+
+Implemented in `src/test/fixtures.ts`. Every fixture round-trips through `projectSchema` today, `broken-messy` carries a machine-readable manifest of the findings it *expects*, and `legacy-v0` proves a version-0 payload still parses and is defaulted rather than rejected. The checker and export assertions are marked `todo` until Phases D and E land; everything structural is asserted now, which is what keeps the fixtures honest in the meantime.
+
+Building the fixtures surfaced two rules that contradicted the spec as written. Both are fixed above (§5.4.5 and §5.4.6) and flagged in the fixture file:
+
+| Contradiction | Resolution |
+|---|---|
+| §5.4.5 flags any character with no relationships, but `clean-minimal` is a single character and expects zero findings. | The warning is scoped to casts of two or more. |
+| §5.4.1 makes a relationship one bidirectional row, while §5.4.6 described a one-sided relationship as a missing reverse entry, which that model cannot represent. | A one-sided relationship is the `asymmetryNote` field, surfaced as an open question rather than an error. |
 
 ### 11.3 Non-functional acceptance
 

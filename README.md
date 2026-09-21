@@ -38,6 +38,8 @@ Open http://localhost:3000.
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint (Next.js core-web-vitals + TypeScript) |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Run the unit tests once |
+| `npm run test:watch` | Run the unit tests in watch mode |
 
 ## What is built
 
@@ -56,6 +58,31 @@ upload: the project lives in `localStorage` and survives a refresh.
 **Still to come** (see `DEVELOPMENT.md` §10): the relationship and world editors,
 the compiled bible view, the continuity checker, the export formats, the AI
 assist and the Nexet CTA.
+
+## Tests
+
+```bash
+npm test
+```
+
+Vitest. jsdom is opted into per file — only the two store test files need a
+real `localStorage`, and creating a DOM environment costs more than the rest of
+the suite put together.
+
+| Area | What is covered |
+|---|---|
+| `fields.test.ts` | Depth counts, tier nesting, layer switching, catalog integrity |
+| `taxonomy.test.ts` | Every vocabulary value has metadata; presets only use real layers |
+| `schema.test.ts` | Factories, validation, and the field value helpers the editor relies on |
+| `store.test.ts` | Cast CRUD, depth changes, deep-copy on duplicate, debounced writes |
+| `store.reload.test.ts` | A genuine reload: fresh module, same storage, nothing lost |
+| `fixtures.test.ts` | Each §11.2 fixture is structurally what it claims to be |
+
+`src/test/fixtures.ts` holds the four named fixtures from `DEVELOPMENT.md`
+§11.2. Each declares what it should contain, and `broken-messy` declares its
+own **planted issues**, so the Phase D continuity checker can be tested by
+asserting it finds exactly those and nothing else. The checker and export
+assertions are `todo` until those phases land.
 
 ## Layout
 
@@ -77,7 +104,12 @@ src/
     fields.ts          the character field catalog and its depth tiers
     schema.ts          the Zod data contract
     store.ts           zustand store, local persistence, cast CRUD
+    useMediaQuery.ts   media-query hook, built on useSyncExternalStore
     utils.ts           small shared helpers
+  test/
+    fixtures.ts        the four named fixtures from DEVELOPMENT.md §11.2
+    *.test.ts          unit tests
+vitest.config.mts      test runner config
 ```
 
 ## Data contract

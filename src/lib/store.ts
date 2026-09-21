@@ -39,7 +39,7 @@ const STORAGE_KEY = "nexet.character-profile-story-bible-starter";
  * runs on pagehide and when the tab is hidden, so a refresh or a close can
  * never drop the last few characters.
  */
-const FLUSH_DELAY_MS = 250;
+export const FLUSH_DELAY_MS = 250;
 
 let pendingWrite: { name: string; value: string } | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;

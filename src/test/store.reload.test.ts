@@ -89,6 +89,39 @@ describe("a reload finds the project again", () => {
     });
   });
 
+  it("fills in the fields the schema gained after an older project was saved", async () => {
+    vi.resetModules();
+    const first = await import("@/lib/store");
+    first.useProjectStore.getState().startProject({
+      title: "Older project",
+      genre: "general",
+      storyType: "novel",
+    });
+    await new Promise((resolve) => setTimeout(resolve, first.FLUSH_DELAY_MS + 150));
+
+    // Rewrite the stored project the way an older build would have written it:
+    // no world section, and none of the collections added since.
+    const key = window.localStorage.key(0);
+    if (!key) throw new Error("nothing was persisted");
+    const saved = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    delete saved.state.project.world;
+    delete saved.state.project.locations;
+    delete saved.state.project.glossary;
+    window.localStorage.setItem(key, JSON.stringify(saved));
+
+    vi.resetModules();
+    const second = await import("@/lib/store");
+    await second.useProjectStore.persist.rehydrate();
+
+    const restored = second.useProjectStore.getState().project;
+    expect(restored?.meta.title).toBe("Older project");
+    // Defaulted rather than undefined, which is what keeps an older local
+    // project out of the reach of a component that expects these fields.
+    expect(restored?.world).toEqual({});
+    expect(restored?.locations).toEqual([]);
+    expect(restored?.glossary).toEqual([]);
+  });
+
   it("reports nothing to restore on a genuinely empty storage", async () => {
     vi.resetModules();
     const fresh = await import("@/lib/store");

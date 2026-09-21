@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CANON_SCOPE_META,
+  CANON_SCOPES,
   CHARACTER_COLORS,
   CHARACTER_ROLE_META,
   CHARACTER_ROLES,
@@ -13,6 +15,8 @@ import {
   IMPORTANCE_META,
   LAYERS,
   LAYER_META,
+  LOCATION_TYPES,
+  LOCATION_TYPE_META,
   RELATIONSHIP_STATUSES,
   RELATIONSHIP_STATUS_META,
   RELATIONSHIP_TYPE_META,
@@ -48,6 +52,8 @@ describe("metadata covers every vocabulary", () => {
       meta: RELATIONSHIP_STATUS_META,
     },
     { name: "layers", values: LAYERS, meta: LAYER_META },
+    { name: "location types", values: LOCATION_TYPES, meta: LOCATION_TYPE_META },
+    { name: "canon scopes", values: CANON_SCOPES, meta: CANON_SCOPE_META },
   ];
 
   it.each(cases)("has an entry for every $name value", ({ values, meta }) => {

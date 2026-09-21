@@ -8,12 +8,13 @@
 
 import { z } from "zod";
 
-import type { FieldDef } from "./fields";
+import { fieldsForDepth, type FieldDef } from "./fields";
 import {
   AI_PROVIDERS,
   CANON_SCOPES,
   CHARACTER_ROLES,
   DEPTH_MODES,
+  GENRE_META,
   GENRES,
   IMPORTANCE_LEVELS,
   RELATIONSHIP_STATUSES,
@@ -139,6 +140,17 @@ export const customFieldDefSchema = z.object({
 });
 export type CustomFieldDef = z.infer<typeof customFieldDefSchema>;
 
+export const worldSchema = z.object({
+  /** Setting & era (§5.5.1), all optional: a writer may know the place first. */
+  setting: z.string().optional(),
+  era: z.string().optional(),
+  techLevel: z.string().optional(),
+  differs: z.string().optional(),
+  /** Culture & society (§5.5.4): norms, traditions, language, government, taboos. */
+  culture: z.string().optional(),
+});
+export type World = z.infer<typeof worldSchema>;
+
 export const projectMetaSchema = z.object({
   title: z.string(),
   author: z.string().optional(),
@@ -156,6 +168,7 @@ export type ProjectMeta = z.infer<typeof projectMetaSchema>;
 export const projectSchema = z.object({
   id: z.string(),
   meta: projectMetaSchema,
+  world: worldSchema.default({}),
   characters: z.array(characterSchema).default([]),
   relationships: z.array(relationshipSchema).default([]),
   locations: z.array(locationSchema).default([]),
@@ -194,6 +207,60 @@ export function createProject(
     updatedAt: new Date().toISOString(),
   };
   return projectSchema.parse(draft);
+}
+
+// ---------------------------------------------------------------------------
+// World factories (§5.5)
+// ---------------------------------------------------------------------------
+
+export function createLocation(input: {
+  name: string;
+  type?: Location["type"];
+}): Location {
+  return locationSchema.parse({
+    id: newId("location"),
+    name: input.name.trim(),
+    type: input.type,
+  });
+}
+
+/**
+ * `cost` and `cannotDo` are required by the model (§5.5.3) but may be written
+ * empty, so a rule can be captured the moment it is named and its limits
+ * filled in later. `rulesWithGaps` reports the ones still missing them.
+ */
+export function createRule(input: { name: string }): Rule {
+  return ruleSchema.parse({ id: newId("rule"), name: input.name.trim() });
+}
+
+export function createFaction(input: { name: string }): Faction {
+  return factionSchema.parse({ id: newId("faction"), name: input.name.trim() });
+}
+
+export function createTimelineEvent(input: {
+  label: string;
+  when?: string;
+  order: number;
+}): TimelineEvent {
+  return timelineEventSchema.parse({
+    id: newId("event"),
+    label: input.label.trim(),
+    when: input.when,
+    order: input.order,
+  });
+}
+
+export function createGlossaryEntry(input: {
+  term: string;
+  definition?: string;
+  aliases?: string[];
+}): GlossaryEntry {
+  return glossaryEntrySchema.parse({
+    id: newId("gloss"),
+    term: input.term.trim(),
+    definition: input.definition ?? "",
+    aliases: input.aliases ?? [],
+  });
 }
 
 export function createCharacter(input: {
@@ -241,6 +308,30 @@ function toList(raw: string): string[] {
     .filter(Boolean);
 }
 
+/**
+ * The value a writer-defined custom field stores.
+ *
+ * `number` falls back to text for blank or non-numeric input rather than
+ * storing `NaN`: `isFieldValueEmpty` treats every number as filled, so an
+ * unparseable number would otherwise read as a completed answer.
+ */
+export function makeCustomFieldValue(def: CustomFieldDef, raw: string): FieldValue {
+  switch (def.kind) {
+    case "long":
+      return { kind: "long", value: raw };
+    case "list":
+      return { kind: "list", value: toList(raw) };
+    case "number": {
+      const trimmed = raw.trim();
+      if (trimmed === "") return { kind: "text", value: "" };
+      const value = Number(trimmed);
+      return Number.isNaN(value) ? { kind: "text", value: raw } : { kind: "number", value };
+    }
+    default:
+      return { kind: "text", value: raw };
+  }
+}
+
 /** A field value rendered as editable text, whatever its kind. */
 export function fieldValueToText(value: FieldValue | undefined): string {
   if (!value) return "";
@@ -258,6 +349,27 @@ export function fieldValueToText(value: FieldValue | undefined): string {
   }
 }
 
+/**
+ * Free-text search across a character: their name, their taxonomies and every
+ * answer they carry, including writer-defined custom fields. Kept as a pure
+ * function over the data contract so the cast list and the cast table can share
+ * one definition of "matches".
+ */
+export function characterMatchesQuery(character: Character, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+
+  const haystack = [character.name, character.role, character.importance];
+  for (const value of Object.values(character.fields)) {
+    haystack.push(fieldValueToText(value));
+  }
+  for (const value of Object.values(character.custom)) {
+    haystack.push(fieldValueToText(value));
+  }
+
+  return haystack.some((text) => text.toLowerCase().includes(needle));
+}
+
 export function isFieldValueEmpty(value: FieldValue | undefined): boolean {
   if (!value) return true;
   switch (value.kind) {
@@ -270,14 +382,38 @@ export function isFieldValueEmpty(value: FieldValue | undefined): boolean {
   }
 }
 
-/** Progress across a set of visible fields, for the editor and cast meters. */
+/**
+ * Progress across a set of visible fields, for the editor and cast meters.
+ *
+ * Custom fields are passed separately because their definitions and their
+ * values live in different places on the project (§5.2 2.6): the definition is
+ * project-wide, the answer is per character.
+ */
 export function measureFields(
   character: Character,
   fields: readonly FieldDef[],
+  customFields: readonly CustomFieldDef[] = [],
 ): { filled: number; total: number } {
   let filled = 0;
   for (const field of fields) {
     if (!isFieldValueEmpty(character.fields[field.key])) filled += 1;
   }
-  return { filled, total: fields.length };
+  for (const def of customFields) {
+    if (!isFieldValueEmpty(character.custom[def.id])) filled += 1;
+  }
+  return { filled, total: fields.length + customFields.length };
+}
+
+/**
+ * Completion for a character as the tool actually displays it: the fields their
+ * depth and the project's genre layers ask for, plus the project's custom
+ * fields. The cast list, the cast table and the relationship graph must all
+ * answer "how complete is this character?" the same way.
+ */
+export function measureCharacter(
+  project: Project,
+  character: Character,
+): { filled: number; total: number } {
+  const layers = GENRE_META[project.meta.genre].layers;
+  return measureFields(character, fieldsForDepth(character.depth, layers), project.customFields);
 }

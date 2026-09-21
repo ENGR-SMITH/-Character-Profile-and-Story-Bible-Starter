@@ -71,6 +71,47 @@ body {
   font-family: var(--font-sans), system-ui, sans-serif;
 }
 
+/*
+ * Print (§5.7.4). The compiled bible is the document that leaves the building on
+ * paper, so the page it prints to is set here rather than left to the browser's
+ * default margins.
+ *
+ * The tokens are reset to ink on paper for the same reason: a writer printing
+ * from a dark-mode browser would otherwise get near-white text on a white page.
+ * This block comes last so it wins over the dark-scheme block above, which is
+ * keyed to the same specificity.
+ *
+ * Hiding the chrome is done per component with Tailwind's `print:` variant, next
+ * to the markup it hides, rather than by naming selectors from here.
+ */
+@media print {
+  @page {
+    margin: 18mm;
+  }
+
+  :root {
+    color-scheme: light;
+    --background: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --border: #c9c4bc;
+    --border-strong: #a8a29e;
+    --foreground: #000000;
+    --muted: #3f3f46;
+    --accent: #92400e;
+    --accent-hover: #92400e;
+    --accent-soft: #ffffff;
+    --accent-foreground: #ffffff;
+    --danger: #991b1b;
+    --danger-soft: #ffffff;
+    --success: #166534;
+  }
+
+  body {
+    background: #ffffff;
+  }
+}
+
 /* Native controls inherit the theme rather than the browser default. */
 select,
 input,

@@ -2,16 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import { FIELD_BY_KEY, fieldsForDepth } from "@/lib/fields";
 import {
+  characterMatchesQuery,
   createCharacter,
   createProject,
   fieldValueToText,
   isFieldValueEmpty,
+  makeCustomFieldValue,
   makeFieldValue,
+  measureCharacter,
   measureFields,
   projectSchema,
   SCHEMA_VERSION,
+  type CustomFieldDef,
   type FieldValue,
 } from "@/lib/schema";
+import type { Genre } from "@/lib/taxonomy";
 
 describe("createProject", () => {
   it("stamps the current schema version so an export is self-describing", () => {
@@ -179,6 +184,80 @@ describe("isFieldValueEmpty", () => {
   });
 });
 
+describe("makeCustomFieldValue", () => {
+  const def = (kind: CustomFieldDef["kind"]): CustomFieldDef => ({
+    id: `custom_${kind}`,
+    label: kind,
+    kind,
+  });
+
+  it("stores text and long fields with their own kinds", () => {
+    expect(makeCustomFieldValue(def("text"), "Lowland" )).toEqual({
+      kind: "text",
+      value: "Lowland",
+    });
+    expect(makeCustomFieldValue(def("long"), "A long note").kind).toBe("long");
+  });
+
+  it("splits a list custom field on newlines like a catalog list field", () => {
+    expect(makeCustomFieldValue(def("list"), "a\n b \n\n")).toEqual({
+      kind: "list",
+      value: ["a", "b"],
+    });
+  });
+
+  it("parses a number custom field", () => {
+    expect(makeCustomFieldValue(def("number"), "42")).toEqual({
+      kind: "number",
+      value: 42,
+    });
+  });
+
+  it("falls back to text for a blank or non-numeric number, never NaN", () => {
+    // A number value is never "empty" to the measurer, so storing NaN here
+    // would report an unanswered field as complete.
+    expect(makeCustomFieldValue(def("number"), "  ")).toEqual({
+      kind: "text",
+      value: "",
+    });
+    expect(makeCustomFieldValue(def("number"), "nineteen")).toEqual({
+      kind: "text",
+      value: "nineteen",
+    });
+  });
+});
+
+describe("characterMatchesQuery", () => {
+  const character = createCharacter({ name: "Mara Vale", role: "protagonist", importance: "pov" });
+  character.fields.eyes = makeFieldValue(FIELD_BY_KEY.eyes, "grey");
+  character.custom.custom_accent = { kind: "text", value: "Lowland coastal" };
+
+  it("matches everything when the query is blank", () => {
+    expect(characterMatchesQuery(character, "   ")).toBe(true);
+  });
+
+  it("matches the name, case-insensitively", () => {
+    expect(characterMatchesQuery(character, "mara")).toBe(true);
+  });
+
+  it("matches a stored answer", () => {
+    expect(characterMatchesQuery(character, "grey")).toBe(true);
+  });
+
+  it("matches a custom field answer, which is where a writer's own words live", () => {
+    expect(characterMatchesQuery(character, "lowland")).toBe(true);
+  });
+
+  it("matches the role and importance taxonomies", () => {
+    expect(characterMatchesQuery(character, "protagonist")).toBe(true);
+    expect(characterMatchesQuery(character, "pov")).toBe(true);
+  });
+
+  it("rejects a query that appears nowhere", () => {
+    expect(characterMatchesQuery(character, "orchard")).toBe(false);
+  });
+});
+
 describe("measureFields", () => {
   const quickFields = fieldsForDepth("quick", []);
 
@@ -201,6 +280,57 @@ describe("measureFields", () => {
     character.fields.eyes = makeFieldValue(FIELD_BY_KEY.eyes, "grey");
     character.fields.hair = makeFieldValue(FIELD_BY_KEY.hair, "   ");
     expect(measureFields(character, quickFields).filled).toBe(1);
+  });
+
+  it("adds custom fields to both the filled and the total", () => {
+    const custom: CustomFieldDef[] = [
+      { id: "custom_accent", label: "Accent", kind: "text" },
+      { id: "custom_height", label: "Height", kind: "text" },
+    ];
+    const character = createCharacter({ name: "Mara" });
+    character.custom.custom_accent = { kind: "text", value: "Lowland" };
+
+    expect(measureFields(character, quickFields, custom)).toEqual({
+      filled: 1,
+      total: quickFields.length + 2,
+    });
+  });
+});
+
+describe("measureCharacter", () => {
+  function projectWith(character: ReturnType<typeof createCharacter>, genre: Genre = "general") {
+    const project = createProject({ title: "Test", genre, storyType: "novel" });
+    return { ...project, characters: [character] };
+  }
+
+  it("follows the character's own depth, like the editor does", () => {
+    const quick = projectWith(createCharacter({ name: "Mara", depth: "quick" }));
+    const deep = projectWith(createCharacter({ name: "Mara", depth: "deep" }));
+
+    expect(measureCharacter(quick, quick.characters[0]).total).toBe(13);
+    expect(measureCharacter(deep, deep.characters[0]).total).toBe(56);
+  });
+
+  it("counts the project's genre layers, not just the base catalog", () => {
+    const fantasy = projectWith(createCharacter({ name: "Mara", depth: "deep" }), "fantasy");
+    // Fantasy switches on all four layers, which the deep total must reflect.
+    expect(measureCharacter(fantasy, fantasy.characters[0]).total).toBe(60);
+  });
+
+  it("counts the project's custom fields, which is what the cast list shows", () => {
+    const character = createCharacter({ name: "Mara" });
+    character.fields.eyes = makeFieldValue(FIELD_BY_KEY.eyes, "grey");
+    character.custom.custom_accent = { kind: "text", value: "Lowland" };
+
+    const project = {
+      ...projectWith(character),
+      customFields: [{ id: "custom_accent", label: "Accent", kind: "text" as const }],
+    };
+
+    expect(measureCharacter(project, character)).toEqual({
+      filled: 2,
+      total: 14,
+    });
   });
 });
 

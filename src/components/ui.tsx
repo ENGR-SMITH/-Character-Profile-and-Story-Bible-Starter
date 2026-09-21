@@ -1,11 +1,12 @@
 "use client";
 
-import type {
-  ButtonHTMLAttributes,
-  InputHTMLAttributes,
-  ReactNode,
-  SelectHTMLAttributes,
-  TextareaHTMLAttributes,
+import {
+  useId,
+  type ButtonHTMLAttributes,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from "react";
 
 import { cn } from "@/lib/utils";
@@ -104,6 +105,62 @@ export function Label({
 
 export function HelpText({ children }: { children: ReactNode }) {
   return <p className="mt-1 text-xs leading-relaxed text-muted">{children}</p>;
+}
+
+/**
+ * What a section is for, behind an icon instead of under its heading.
+ *
+ * Section blurbs are worth having once and worth reading once; left in the page
+ * they are a wall of grey between the writer and the work. This keeps the words
+ * available — on hover, and on keyboard focus, which is the half that matters
+ * and the half a tooltip usually forgets — while the heading itself stays a
+ * heading.
+ *
+ * The tooltip is in the DOM whether or not it is shown, and is wired with
+ * `aria-describedby`, so a screen reader is told what the section is without the
+ * writer having to hover anything. It is hidden from print: a printed bible
+ * does not need the tool's interface notes, and an un-hoverable tooltip has no
+ * way to be read on paper anyway.
+ */
+export function InfoHint({
+  label,
+  children,
+  className,
+}: {
+  /** The section being explained, for the button's accessible name. */
+  label: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  const id = useId();
+
+  return (
+    <span
+      className={cn(
+        "group relative inline-flex items-center align-middle print:hidden",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        aria-label={`What “${label}” is for`}
+        aria-describedby={id}
+        className="inline-flex size-4 cursor-help items-center justify-center rounded-full border border-border text-[10px] leading-none font-semibold text-muted normal-case transition-colors hover:border-accent hover:text-accent focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+      >
+        <span aria-hidden>i</span>
+      </button>
+      <span
+        id={id}
+        role="tooltip"
+        // `normal-case`, `font-normal` and `tracking-normal` are deliberate: the
+        // two uppercase section headings in the tool would otherwise shout the
+        // icon's glyph and every word of the explanation.
+        className="pointer-events-none absolute top-full left-1/2 z-20 mt-1.5 w-64 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-surface p-2.5 text-xs leading-relaxed font-normal tracking-normal text-foreground normal-case opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {children}
+      </span>
+    </span>
+  );
 }
 
 /** A labelled control with the help line that every field in the editor uses. */
@@ -213,17 +270,21 @@ export function EmptyState({
 export function SectionHeading({
   title,
   count,
+  hint,
   actions,
 }: {
   title: string;
   count?: string;
+  /** What the section is for, shown from the `InfoHint` beside the title. */
+  hint?: ReactNode;
   actions?: ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <h2 className="text-sm font-semibold tracking-wide text-foreground uppercase">
+      <h2 className="flex items-center gap-2 text-sm font-semibold tracking-wide text-foreground uppercase">
         {title}
-        {count ? <span className="ml-2 font-normal text-muted normal-case">{count}</span> : null}
+        {count ? <span className="font-normal text-muted normal-case">{count}</span> : null}
+        {hint ? <InfoHint label={title}>{hint}</InfoHint> : null}
       </h2>
       {actions}
     </div>

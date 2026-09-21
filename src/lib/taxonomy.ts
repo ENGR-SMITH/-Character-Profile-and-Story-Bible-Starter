@@ -216,6 +216,37 @@ export const RELATIONSHIP_STATUS_META: Record<
 };
 
 // ---------------------------------------------------------------------------
+// World — locations (§5.5.2). The other world collections are free text: a
+// rule's cost, a faction's purpose and a glossary definition have no useful
+// fixed vocabulary, and inventing one would only be a ceiling.
+// ---------------------------------------------------------------------------
+
+export const LOCATION_TYPES = [
+  "city",
+  "town",
+  "region",
+  "wilderness",
+  "landmark",
+  "building",
+  "room",
+  "vehicle",
+  "other",
+] as const;
+export type LocationType = (typeof LOCATION_TYPES)[number];
+
+export const LOCATION_TYPE_META: Record<LocationType, { label: string }> = {
+  city: { label: "City" },
+  town: { label: "Town or village" },
+  region: { label: "Region" },
+  wilderness: { label: "Wilderness" },
+  landmark: { label: "Landmark" },
+  building: { label: "Building" },
+  room: { label: "Room" },
+  vehicle: { label: "Vehicle or ship" },
+  other: { label: "Something else" },
+};
+
+// ---------------------------------------------------------------------------
 // Colour tags
 // ---------------------------------------------------------------------------
 
@@ -243,5 +274,51 @@ export const AI_PROVIDERS = [
 ] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
 
+// ---------------------------------------------------------------------------
+// The collaborator brief's suggested role (§8.3)
+// ---------------------------------------------------------------------------
+
+export const BRIEF_ROLES = [
+  "co-writer",
+  "editor",
+  "beta-reader",
+  "proofreader",
+] as const;
+export type BriefRole = (typeof BRIEF_ROLES)[number];
+
+/**
+ * The roles a brief can be handed to, in the plan's own order, with the words
+ * the Authors Den uses for each (§8.2).
+ */
+export const BRIEF_ROLE_META: Record<BriefRole, { label: string; hint: string }> = {
+  "co-writer": {
+    label: "Co-writer",
+    hint: "Works inside the story, building it with you",
+  },
+  editor: {
+    label: "Editor",
+    hint: "Works on the decisions, not the prose",
+  },
+  "beta-reader": {
+    label: "Beta reader",
+    hint: "Reads against the ground the brief sets",
+  },
+  proofreader: {
+    label: "Proofreader",
+    hint: "Keeps names, spellings and facts straight",
+  },
+};
+
 export const CANON_SCOPES = ["project", "character", "world"] as const;
 export type CanonScope = (typeof CANON_SCOPES)[number];
+
+/**
+ * What a protected fact is true of (§5.6.7). Everything in the top block of the
+ * bible is marked "do not change"; the scope is how a collaborator knows how
+ * far that reaches.
+ */
+export const CANON_SCOPE_META: Record<CanonScope, { label: string; hint: string }> = {
+  project: { label: "Project", hint: "True of the whole story" },
+  character: { label: "Character", hint: "True of one character" },
+  world: { label: "World", hint: "True of the setting or its rules" },
+};

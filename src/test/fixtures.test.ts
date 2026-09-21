@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { runContinuityCheck, type FindingKind } from "@/lib/checker";
 import { countFieldsForDepth, fieldsForDepth } from "@/lib/fields";
 import {
   fieldValueToText,
@@ -8,7 +9,9 @@ import {
   projectSchema,
   SCHEMA_VERSION,
 } from "@/lib/schema";
+import { nameOf, relationshipMapText } from "@/lib/relationships";
 import { GENRE_META } from "@/lib/taxonomy";
+import { rulesWithGaps } from "@/lib/world";
 import {
   brokenMessy,
   cleanMinimal,
@@ -16,7 +19,24 @@ import {
   deepFull,
   LEGACY_V0_MISSING_COLLECTIONS,
   legacyV0,
+  type ExpectedFindingKind,
 } from "@/test/fixtures";
+
+/**
+ * The one place the fixture's vocabulary meets the checker's.
+ *
+ * A fixture name says what was planted ("missing core field"); a finding kind
+ * says which rule caught it ("missing-field"). A core field is a Quick field,
+ * so the planted issue is the `gap` severity of the missing-field report.
+ */
+const CHECKER_KIND: Record<ExpectedFindingKind, FindingKind> = {
+  "duplicate-name": "duplicate-name",
+  "orphan-character": "orphan-character",
+  "glossary-spelling": "glossary-spelling",
+  "impossible-age": "impossible-age",
+  "one-sided-relationship": "one-sided-relationship",
+  "missing-core-field": "missing-field",
+};
 
 function normalise(term: string): string {
   return term.trim().toLowerCase().replace(/\s+/g, " ");
@@ -70,11 +90,20 @@ describe("clean-minimal", () => {
     expect(project.canonFacts).toEqual([]);
   });
 
-  // Phase D. Note the ambiguity this fixture creates and must resolve:
+  // Note the ambiguity this fixture creates and that the checker resolves:
   // §5.4.5 flags a character with no relationships, but with a cast of one
   // there is nobody to be linked to and this fixture expects zero findings.
-  // The orphan rule therefore has to be "unlinked while the cast is > 1".
-  it.todo("reports zero findings once the continuity checker exists (Phase D)");
+  // The orphan rule is therefore "unlinked while the cast is > 1".
+  it("reports zero findings", () => {
+    const report = runContinuityCheck(project);
+    expect(report.findings).toEqual([]);
+    expect(report.coverage).toEqual({
+      completeCharacters: 1,
+      totalCharacters: 1,
+      fieldsFilled: CLEAN_MINIMAL_QUICK_FIELD_COUNT,
+      fieldsAsked: CLEAN_MINIMAL_QUICK_FIELD_COUNT,
+    });
+  });
 });
 
 describe("broken-messy", () => {
@@ -173,7 +202,39 @@ describe("broken-messy", () => {
     expect(project.relationships).toHaveLength(2);
   });
 
-  it.todo("reports exactly one finding per planted issue (Phase D)");
+  it("reports exactly one finding per planted issue, and nothing besides", () => {
+    const report = runContinuityCheck(project);
+
+    // One finding per plant and no false positives: the exit criterion in §10.
+    expect(report.findings).toHaveLength(expected.length);
+
+    for (const planted of expected) {
+      const kind = CHECKER_KIND[planted.kind];
+      const found = report.findings.filter((finding) => finding.kind === kind);
+
+      expect(found, `${planted.kind} should be reported as ${kind}`).toHaveLength(
+        planted.count,
+      );
+      const [finding] = found;
+      if (!finding) throw new Error(`no finding for ${planted.kind}`);
+      expect(finding.detail.trim().length).toBeGreaterThan(10);
+
+      for (const id of planted.characterIds ?? []) {
+        expect(finding.characterIds, `${planted.kind} characters`).toContain(id);
+      }
+      if (planted.glossaryEntryId) {
+        expect(finding.glossaryEntryId).toBe(planted.glossaryEntryId);
+      }
+    }
+
+    // And every finding the checker produced was one of the planted issues.
+    const plantedKinds = new Set(expected.map((planted) => CHECKER_KIND[planted.kind]));
+    for (const finding of report.findings) {
+      expect(plantedKinds.has(finding.kind), `unexpected ${finding.kind}: ${finding.title}`).toBe(
+        true,
+      );
+    }
+  });
 });
 
 describe("deep-full", () => {
@@ -223,12 +284,33 @@ describe("deep-full", () => {
     }
   });
 
+  it("reports no rule gaps to the world editor", () => {
+    // The same function the editor's badge reads, so a rule that leaves a limit
+    // blank would be caught here rather than only in the UI.
+    expect(rulesWithGaps(project).map((rule) => rule.name)).toEqual([]);
+  });
+
   it("keeps custom field values matching a declared custom field", () => {
     const declared = new Set(project.customFields.map((field) => field.id));
     for (const character of project.characters) {
       for (const key of Object.keys(character.custom)) {
         expect(declared.has(key), `undeclared custom field ${key}`).toBe(true);
       }
+    }
+  });
+
+  it("renders its relationship map once per stored row, grouped by type", () => {
+    const text = relationshipMapText(project);
+    expect(text).not.toBe("");
+    // One bullet per relationship, no matter how many characters point at it.
+    expect(text.match(/^- /gm)).toHaveLength(project.relationships.length);
+    for (const relationship of project.relationships) {
+      expect(text).toContain(
+        `**${nameOf(project, relationship.fromId)}** ↔ **${nameOf(
+          project,
+          relationship.toId,
+        )}**`,
+      );
     }
   });
 
@@ -245,8 +327,9 @@ describe("deep-full", () => {
     );
   });
 
-  // Phase E, once the export serialisers exist.
-  it.todo("exports cleanly in all six formats (Phase E)");
+  // Phase E's serialisers all exist now, so the manifest's export half is
+  // asserted across every fixture in `export-files.test.ts`, which is where the
+  // two formats that need a library are available.
 });
 
 describe("legacy-v0", () => {
@@ -271,5 +354,11 @@ describe("legacy-v0", () => {
     expect(parsed.characters).toHaveLength(1);
     expect(parsed.characters[0]?.name).toBe("Old Character");
     expect(fieldValueToText(parsed.characters[0]?.fields.nickname)).toBe("Old");
+  });
+
+  it("gains the world section it predates", () => {
+    // §5.5's setting fields did not exist in version 0, so the schema supplies
+    // the empty section instead of the payload having to carry it.
+    expect(parsed.world).toEqual({});
   });
 });
